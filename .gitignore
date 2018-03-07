@@ -1,4 +1,6 @@
 *.json
+results/
+
 # Boilerplate python below
 # Byte-compiled / optimized / DLL files
 __pycache__/

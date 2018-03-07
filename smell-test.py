@@ -26,7 +26,7 @@ def grade_https(name):
             '--severity ' + severity,
             '--quiet',
             '--sneaky',
-            '--json-pretty',
+            '-oJ ' + log_dir
     ])
     script_path = './testssl.sh/testssl.sh'
     cmd = " ".join([script_path, flags, name])
