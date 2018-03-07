@@ -1,15 +1,12 @@
 #!/usr/bin/env python
 
 from scapy.all import *
-from lxml import html
-#import requests
 import os
 
 # change this to whatever interface you are interested in
 interface = 'eno1'
 filter_bpf = 'udp and port 53'
 cache = []
-counter = 0
 
 # TODO: this caching could be more robust...
 def add_cname_to_cache(cname):
@@ -52,10 +49,8 @@ def select_DNS(pkt):
                 # print response body, for now
                 grade_https(name)
                 add_cname_to_cache(name)
-                                                                                          # 
     except Exception, e:
         print(e)
-# ------ START SNIFFER 
+
 print ('[**] Beginning smell test')
 sniff(iface=interface, filter=filter_bpf, store=0,  prn=select_DNS)
-#print(grade_https('www.santropolroulant.org'))
