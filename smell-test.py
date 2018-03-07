@@ -55,7 +55,7 @@ def grade_https(name, answer):
     if name.endswith('.'): name = name[:-1]
     # generate report and get the path
     report = generate_testssl_report(name)
-    print ("[**] Report generated: " +report)
+    print ("[**] Report generated: " + report)
 
 # this function gets called on all packets that match the sniffer filter
 def select_DNS(pkt):
