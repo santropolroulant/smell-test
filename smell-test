@@ -15,9 +15,11 @@ cache = []
 
 # TODO: this caching could be more robust...
 def add_cname_to_cache(cname):
+    cname = cname.lower()
     cache.append(cname)
 
 def in_cache(cname):
+    cname = cname.lower()
     return cname in cache
 
 def valid_ip(address):
@@ -31,6 +33,7 @@ def generate_testssl_report(host):
     """Prepare the bash command and execute with $host as the target.
         Creates a .json file in ./results/
     """
+    host = host.lower()
     # set arguments for flags
     log_dir = './results/'
     if not os.path.exists(log_dir):
@@ -77,7 +80,7 @@ def grade_https(name, answer):
 def select_DNS(pkt):
     try:
         if DNSRR in pkt and pkt.sport == 53:
-            name = pkt[DNSQR].qname # user asked for this
+            name = pkt[DNSQR].qname.lower() # user asked for this
             answer = pkt[DNSRR].rdata # corresponding IP
 
             print ('[+] User asked for "{}" DNS responded "{}"'.format(name, answer))
