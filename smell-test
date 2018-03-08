@@ -83,16 +83,12 @@ def select_DNS(pkt):
             name = pkt[DNSQR].qname.lower() # user asked for this
             answer = pkt[DNSRR].rdata # corresponding IP
 
-            print ('[+] User asked for "{}" DNS responded "{}"'.format(name, answer))
-            if in_cache(name): 
-                # TODO: this is a little verbose. maybe delete
-                print ('[-] {} is in the cache. Grading will be skipped'.format(name))
-            elif 'in-addr' in name:
-                print ('[-] Ignoring reverse DNS query')
-            else:
-                # print response body, for now
-                add_cname_to_cache(name)
-                grade_https(name, answer)
+            # only grade new requests and ignore reverse DNS
+            if not in_cache(name) and 'in-addr' not in name:
+                if valid_ip(answer):
+                    print('[+] Requested "{}" DNS responded "{}"'.format(name, answer))
+                    add_cname_to_cache(name)
+                    grade_https(name, answer)
     except Exception as e:
         print(e)
 
