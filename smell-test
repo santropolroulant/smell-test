@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
+
+#NB: this is python2 because the python3 version of scapy is an incompatible rewrite
 
 from scapy.all import *
 import socket
