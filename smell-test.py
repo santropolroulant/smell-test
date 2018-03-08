@@ -4,6 +4,7 @@ from scapy.all import *
 import socket
 import os
 import time
+import json
 
 # change this to whatever interface you are interested in
 interface = 'eno1'
@@ -17,7 +18,6 @@ def add_cname_to_cache(cname):
 def in_cache(cname):
     return cname in cache
 
-
 def valid_ip(address):
     try: 
         socket.inet_aton(address)
@@ -26,9 +26,8 @@ def valid_ip(address):
         return False
 
 def generate_testssl_report(host):
-    """Prepare the bash command and
-    execute with $host as the target.
-    Creates a .json file in the directory
+    """Prepare the bash command and execute with $host as the target.
+        Creates a .json file in ./results/
     """
     # set arguments for flags
     log_dir = './results/'
@@ -36,8 +35,8 @@ def generate_testssl_report(host):
         os.makedirs(log_dir)
     # dir/www.example.com_20180307-164136.json
     log_path = log_dir + host + '_' + time.strftime("%Y%m%d-%H%M%S") + '.json'
-    severity = 'HIGH'
-    print ('[**] Evaluating ' + host)
+    severity = 'HIGH' # adjust this according to your level of paranoia
+    print ('[+] Evaluating ' + host)
     # TODO: Add --nodns flag when host is an IPv4 address
     flags = ' '.join([
             '--vulnerable',
@@ -48,7 +47,7 @@ def generate_testssl_report(host):
     ])
     script_path = './testssl.sh/testssl.sh'
     cmd = " ".join([script_path, flags, host])
-    print ("[DEBUG] Executing " + cmd)
+    #print ("[DEBUG] Executing " + cmd)
     #TODO: Add threading(?) so that we don't wait on this command
     os.system(cmd)
     return log_path
@@ -57,8 +56,20 @@ def grade_https(name, answer):
     # sometimes DNS responses come with a trailing period :(
     if name.endswith('.'): name = name[:-1]
     # generate report and get the path
-    report = generate_testssl_report(name)
-    print ("[**] Report generated: " + report)
+    report_path = generate_testssl_report(name)
+    print ("[+] Report generated: " + report_path)
+    # parse json file for grade info
+    with open(report_path, 'r') as fh:
+        data = json.load(fh)
+    for vuln in data['scanResult'][0]['vulnerabilities']:
+        out_string = '[!] {}-severity vulnerability found: {}'.format(vuln['severity'], vuln['id'])
+        # some vulnerabilities don't have cves
+        if 'cve' in vuln:
+            out_string += ' ({})'.format(vuln['cve'])
+
+        print (out_string)
+
+    #print(json.dumps(data, indent=4, sort_keys=True))
 
 # this function gets called on all packets that match the sniffer filter
 def select_DNS(pkt):
@@ -67,18 +78,18 @@ def select_DNS(pkt):
             name = pkt[DNSQR].qname # user asked for this
             answer = pkt[DNSRR].rdata # corresponding IP
 
-            print ('[*] User asked for "{}" DNS responded "{}"'.format(name, answer))
+            print ('[+] User asked for "{}" DNS responded "{}"'.format(name, answer))
             if in_cache(name): 
+                # TODO: this is a little verbose. maybe delete
                 print ('[-] {} is in the cache. Grading will be skipped'.format(name))
             elif 'in-addr' in name:
                 print ('[-] Ignoring reverse DNS query')
             else:
                 # print response body, for now
-                grade_https(name, answer)
-
                 add_cname_to_cache(name)
+                grade_https(name, answer)
     except Exception as e:
         print(e)
 
-print ('[**] Beginning smell test')
+print ('[**] Beginning "Smell Test"')
 sniff(iface=interface, filter=filter_bpf, store=0,  prn=select_DNS)
