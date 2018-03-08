@@ -30,10 +30,13 @@ def generate_testssl_report(host):
     execute with $host as the target.
     Creates a .json file in the directory
     """
-    severity = 'HIGH'
-    log_dir = 'results/'
+    # set arguments for flags
+    log_dir = './results/'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
     # dir/www.example.com_20180307-164136.json
     log_path = log_dir + host + '_' + time.strftime("%Y%m%d-%H%M%S") + '.json'
+    severity = 'HIGH'
     print ('[**] Evaluating ' + host)
     # TODO: Add --nodns flag when host is an IPv4 address
     flags = ' '.join([
@@ -74,7 +77,7 @@ def select_DNS(pkt):
                 grade_https(name, answer)
 
                 add_cname_to_cache(name)
-    except Exception, e:
+    except Exception as e:
         print(e)
 
 print ('[**] Beginning smell test')
