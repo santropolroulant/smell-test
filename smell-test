@@ -84,8 +84,8 @@ def grade_https(name, answer):
 def select_DNS(pkt):
     try:
         if DNSRR in pkt and pkt.sport == 53:
-            # scapy3k gives "bytes like objects" so we must deocde to utf-8
-            name = pkt[DNSQR].qname.decode("utf-8").lower() # user asked for this
+            # assume DNS records will give us ASCII results. look into this later
+            name = pkt[DNSQR].qname.decode("ascii").lower() # user asked for this
             answer = pkt[DNSRR].rdata # corresponding IP
 
             print ('[+] User asked for "{}" DNS responded "{}"'.format(name, answer))
