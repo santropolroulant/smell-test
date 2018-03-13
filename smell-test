@@ -1,6 +1,10 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
-#NB: this is python2 because the python3 version of scapy is an incompatible rewrite
+# look for the Debian package name
+try:
+    import scapy3k as scapy
+except ImportError:
+    import scapy
 
 from scapy.all import *
 import socket
@@ -78,7 +82,8 @@ def grade_https(name, ip):
 def select_DNS(pkt):
     try:
         if DNSRR in pkt and pkt.sport == 53:
-            name = pkt[DNSQR].qname.lower() # user asked for this
+            # assume DNS records will give us ASCII results. look into this later
+            name = pkt[DNSQR].qname.decode("ascii").lower() # user asked for this
             answer = pkt[DNSRR].rdata # corresponding IP
 
             # only grade new requests and ignore reverse DNS
