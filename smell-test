@@ -29,40 +29,39 @@ def valid_ip(address):
     except:
         return False
 
-def generate_testssl_report(host):
-    """Prepare the bash command and execute with $host as the target.
+def generate_testssl_report(name, ip_addr):
+    """Prepare the bash command and execute with $ip_addr as the target.
         Creates a .json file in ./results/
     """
-    host = host.lower()
     # set arguments for flags
     log_dir = './results/'
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     # dir/www.example.com_20180307-164136.json
-    log_path = log_dir + host + '_' + time.strftime("%Y%m%d-%H%M%S") + '.json'
+    log_path = log_dir + name + '_' + time.strftime("%Y%m%d-%H%M%S") + '.json'
     severity = 'HIGH' # adjust this according to your level of paranoia
-    print ('[+] Evaluating ' + host)
-    # TODO: Add --nodns flag when host is an IPv4 address
     flags = ' '.join([
             '--vulnerable',
             '--severity ' + severity,
             '--quiet',
+            '--nodns',
             '--sneaky',
             '-oJ ' + log_path
     ])
     script_path = './testssl.sh/testssl.sh'
-    cmd = " ".join([script_path, flags, host])
-    #print ("[DEBUG] Executing " + cmd)
+    cmd = " ".join([script_path, flags, ip_addr])
     #TODO: Add threading(?) so that we don't wait on this command
     os.system(cmd)
     return log_path
 
-def grade_https(name, answer):
+def grade_https(name, ip):
     # sometimes DNS responses come with a trailing period :(
     if name.endswith('.'): name = name[:-1]
+
     # generate report and get the path
-    report_path = generate_testssl_report(name)
+    report_path = generate_testssl_report(name, ip)
     print ("[+] Report generated: " + report_path)
+
     # parse json file for grade info
     with open(report_path, 'r') as fh:
         data = json.load(fh)
@@ -73,7 +72,6 @@ def grade_https(name, answer):
             out_string += ' ({})'.format(vuln['cve'])
 
         print (out_string)
-
     #print(json.dumps(data, indent=4, sort_keys=True))
 
 # this function gets called on all packets that match the sniffer filter
@@ -83,16 +81,14 @@ def select_DNS(pkt):
             name = pkt[DNSQR].qname.lower() # user asked for this
             answer = pkt[DNSRR].rdata # corresponding IP
 
-            print ('[+] User asked for "{}" DNS responded "{}"'.format(name, answer))
-            if in_cache(name): 
-                # TODO: this is a little verbose. maybe delete
-                print ('[-] {} is in the cache. Grading will be skipped'.format(name))
-            elif 'in-addr' in name:
-                print ('[-] Ignoring reverse DNS query')
-            else:
-                # print response body, for now
-                add_cname_to_cache(name)
-                grade_https(name, answer)
+            # only grade new requests and ignore reverse DNS
+            if not in_cache(name) and 'in-addr' not in name:
+                if valid_ip(answer):
+                    print('[+] Requested "{}" DNS responded "{}"'.format(name, answer))
+                    add_cname_to_cache(name)
+                    print ('[+] Evaluating ' + name)
+                    # will always be a domain and an ip after above validation
+                    grade_https(name, answer)
     except Exception as e:
         print(e)
 
