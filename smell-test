@@ -7,13 +7,15 @@ except ImportError:
     import scapy
 
 from scapy.all import *
+import subprocess
 import socket
 import os
 import time
 import json
 
 # change this to whatever interface you are interested in
-interface = 'eno1'
+# TODO: change this to a command line argument to the script
+interface = 'en0'
 filter_bpf = 'udp and port 53'
 cache = []
 
@@ -33,38 +35,78 @@ def valid_ip(address):
     except:
         return False
 
-def generate_testssl_report(name, ip_addr):
-    """Prepare the bash command and execute with $ip_addr as the target.
-        Creates a .json file in ./results/
+def generate_report(name, ip_addr):
+    """Prepare the flags/arguments for testssl and create a subprocess
+       calling the testssl.sh executable. Results are written
+       to an output file. Format `dir/www.example.com_20180307-164136.json`
+       Returns the path to the json file created.
     """
-    # set arguments for flags
+    # Prepare array of arguments to be passed to subprocess
+    args = []
+
+    # change this value if you move testssl for whatever reason
+    path_to_executable = './testssl.sh/testssl.sh'
+
+    # make sure we have no troubles writing to files
     log_dir = './results/'
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-    # dir/www.example.com_20180307-164136.json
     log_path = log_dir + name + '_' + time.strftime("%Y%m%d-%H%M%S") + '.json'
-    severity = 'HIGH' # adjust this according to your level of paranoia
-    flags = ' '.join([
-            '--vulnerable',
-            '--severity ' + severity,
-            '--quiet',
-            '--nodns',
-            '--sneaky',
-            '-oJ ' + log_path
-    ])
-    script_path = './testssl.sh/testssl.sh'
-    cmd = " ".join([script_path, flags, ip_addr])
-    #TODO: Add threading(?) so that we don't wait on this command
-    os.system(cmd)
-    return log_path
 
+    # adjust this according to your level of paranoia
+    # good values are HIGH and CRITICAL
+    severity = 'HIGH' 
+
+    # This must be a string because it's a command line argument
+    timeout_in_seconds = '20'
+
+    # subprocess expects a flat array; flags with arguments 
+    #       must be separated into their own elements
+    flags = [
+            '--vulnerable', # check for vulnerabilties
+            '--warnings', # testssl.sh will still warn you if there will be a "drastic impact"
+            'off',
+            '--openssl-timeout', # TODO: instead of timeout, don't run this on HTTP w/out TLS
+            timeout_in_seconds,
+            '--severity',
+            severity,
+            '--quiet', # leave fewer traces
+            '--sneaky',
+            '--nodns', # we are already doing a DNS lookup in the first place
+            '-oJ', # outputs results to a .json file in log_path
+            log_path
+    ]
+    args.append(path_to_executable)
+    for f in flags: args.append(f)
+    args.append(ip_addr)
+
+    # Create testssl fork using subprocess and capture the output
+    # The execept statement will catch and display errors from testssl
+    try:
+        output = subprocess.check_output(args)
+        return log_path
+    except subprocess.CalledProcessError as e:
+        output = e.output
+        print("[-] ERROR: TestSSL did not execute successfully: " + output)
+        return None
+
+    print(output)
+
+# TODO: Create more granular grading criteria
 def grade_https(name, ip):
+    """Takes as input a website name and its IP and returns a grading.
+    The grade represents a simplified evaluation of SSL/TLS security
+    based on the output of testssl.sh
+    Exact criteria will be decided later. For now we will give sites with
+    vulnerabilties ranking HIGH|CRITICAL a "Fail" and others a "Pass"
+    """
     # sometimes DNS responses come with a trailing period :(
     if name.endswith('.'): name = name[:-1]
 
     # generate report and get the path
-    report_path = generate_testssl_report(name, ip)
-    print ("[+] Report generated: " + report_path)
+    report_path = generate_report(name, ip)
+    if report_path is None: return  
+    print("[+] Report generated: " + report_path)
 
     # parse json file for grade info
     with open(report_path, 'r') as fh:
@@ -75,7 +117,7 @@ def grade_https(name, ip):
         if 'cve' in vuln:
             out_string += ' ({})'.format(vuln['cve'])
 
-        print (out_string)
+        print(out_string)
     #print(json.dumps(data, indent=4, sort_keys=True))
 
 # this function gets called on all packets that match the sniffer filter
