@@ -6,9 +6,11 @@ import os
 import platform
 import time
 import json
+import glob
 from sys import exit
 
 
+# TODO: the below doens't actually work on Debian. Needs fixing
 # look for the Debian package name
 try:
     import scapy3k as scapy
@@ -22,16 +24,15 @@ import xdg.BaseDirectory
 # TODO: change this to a command line argument to the script
 interface = ''
 filter_bpf = 'udp and port 53'
-cache = []
-
-# TODO: this caching could be more robust...
-def add_cname_to_cache(cname):
-    cname = cname.lower()
-    cache.append(cname)
 
 def in_cache(cname):
-    cname = cname.lower()
-    return cname in cache
+    # check cache before evaluating
+    path_to_cache = cache_path()
+    reports = glob(path_to_cache + '*.json')
+    for r in reports:
+        if cname in r:
+            return True
+    return False
 
 def valid_ip(address):
     """Validate whether `address` is in valid IPv4 by calling the C class
@@ -58,7 +59,6 @@ def cache_path():
         # resolve user's home directory
         home = os.path.expanduser('~')
         path = home + '/Library/Application Support/smell-test/'
-        print(path)
         if not os.path.exists(path): 
             try:
                 os.makedirs(path)
@@ -135,8 +135,7 @@ def grade_https(name, ip):
     Exact criteria will be decided later. For now we will give sites with
     vulnerabilties ranking HIGH|CRITICAL a "Fail" and others a "Pass"
     """
-    # sometimes DNS responses come with a trailing period :(
-    if name.endswith('.'): name = name[:-1]
+
 
     # generate report and get the path
     report_path = generate_report(name, ip)
@@ -157,22 +156,29 @@ def grade_https(name, ip):
 
 # this function gets called on all packets that match the sniffer filter
 def select_DNS(pkt):
-    try:
-        if DNSRR in pkt and pkt.sport == 53:
-            # assume DNS records will give us ASCII results. look into this later
-            name = pkt[DNSQR].qname.decode("ascii").lower() # user asked for this
-            answer = pkt[DNSRR].rdata # corresponding IP
+    # we're only interested in DNS response records
+    if not (DNSRR in pkt and pkt.sport == 53): return
 
-            # only grade new requests and ignore reverse DNS
-            if not in_cache(name) and 'in-addr' not in name:
-                if valid_ip(answer):
-                    print('[+] Requested "{}" DNS responded "{}"'.format(name, answer))
-                    add_cname_to_cache(name)
-                    print ('[+] Evaluating ' + name)
-                    # will always be a domain and an ip after above validation
-                    grade_https(name, answer)
-    except Exception as e:
-        print(e)
+    # assume DNS records will give us ASCII results. look into this later
+    name = pkt[DNSQR].qname.decode("ascii").lower() # user asked for this
+    answer = pkt[DNSRR].rdata # corresponding IP
+
+    # sometimes DNS responses come with a trailing period. normalize the name.
+    if name.endswith('.'): name = name[:-1]
+    
+    # don't evaluate names if they're in the cache
+    if in_cache(name): return
+
+    # ignore reverse DNS 
+    if 'in-addr' in name: return
+
+    # only validate the 'ultimate' DNS result i.e. not aliases
+    if not valid_ip(answer): return
+
+    # only grade new requests and ignore reverse DNS
+    print('[+] Requested "{}" DNS responded "{}"'.format(name, answer))
+    print ('[+] Evaluating ' + name)
+    grade_https(name, answer)
 
 print ('[**] Beginning "Smell Test"')
 try:
