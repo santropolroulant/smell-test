@@ -8,6 +8,7 @@ import time
 import json
 import glob
 from sys import exit
+from functools import lru_cache
 
 
 # TODO: the below doensn't actually work on Debian. Needs fixing
@@ -20,11 +21,13 @@ except ImportError:
 from scapy.all import *
 import xdg.BaseDirectory
 
-# change this to whatever interface you are interested in
-# TODO: change this to a command line argument to the script
+# Change this to whatever interface you are interested in
+# TODO: Change this to a command line argument to the script
 interface = ''
 filter_bpf = 'udp and port 53'
 
+# Max size value chosen here is arbitrary. Change it if you want.
+@lru_cache(maxsize=100)
 def in_cache(cname):
     """Search `cache_path` for JSON files with names containing `cname`
     If found, return True. Otherwise, return False.
