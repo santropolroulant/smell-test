@@ -15,11 +15,11 @@ except ImportError:
     import scapy
 #TODO only import what we need: `sniff` (what else?)
 from scapy.all import *
-import xdg
+import xdg.BaseDirectory
 
 # change this to whatever interface you are interested in
 # TODO: change this to a command line argument to the script
-interface = 'en0'
+interface = ''
 filter_bpf = 'udp and port 53'
 cache = []
 
@@ -52,7 +52,7 @@ def cache_path():
     this_os = platform.system()
     if this_os == 'Linux':
         # thie function checks that $XDG_CACHE_HOME exists and returns the path
-        path = xdg.save_cache_path('smell-test')
+        path = xdg.BaseDirectory.save_cache_path('smell-test/')
     elif this_os == 'Darwin':
         path = '~/Library/Application Support/smell-test/'
         if not os.path.exists(path): 
@@ -172,4 +172,7 @@ def select_DNS(pkt):
 
 cache_path()
 print ('[**] Beginning "Smell Test"')
-sniff(iface=interface, filter=filter_bpf, store=0,  prn=select_DNS)
+try:
+    sniff(iface=interface, filter=filter_bpf, store=0,  prn=select_DNS)
+except OSError as e:
+    print('[-] ERROR: "{}". (Make sure `interface` matches your network interface)'.format(e))
