@@ -10,7 +10,7 @@ import glob
 from sys import exit
 
 
-# TODO: the below doens't actually work on Debian. Needs fixing
+# TODO: the below doensn't actually work on Debian. Needs fixing
 # look for the Debian package name
 try:
     import scapy3k as scapy
@@ -26,7 +26,9 @@ interface = ''
 filter_bpf = 'udp and port 53'
 
 def in_cache(cname):
-    # check cache before evaluating
+    """Search `cache_path` for JSON files with names containing `cname`
+    If found, return True. Otherwise, return False.
+    """
     path_to_cache = cache_path()
     reports = glob(path_to_cache + '*.json')
     for r in reports:
@@ -135,8 +137,6 @@ def grade_https(name, ip):
     Exact criteria will be decided later. For now we will give sites with
     vulnerabilties ranking HIGH|CRITICAL a "Fail" and others a "Pass"
     """
-
-
     # generate report and get the path
     report_path = generate_report(name, ip)
     if report_path is None: return  
@@ -161,12 +161,12 @@ def select_DNS(pkt):
 
     # assume DNS records will give us ASCII results. look into this later
     name = pkt[DNSQR].qname.decode("ascii").lower() # user asked for this
-    answer = pkt[DNSRR].rdata # corresponding IP
+    answer = pkt[DNSRR].rdata # corresponding response
 
     # sometimes DNS responses come with a trailing period. normalize the name.
     if name.endswith('.'): name = name[:-1]
     
-    # don't evaluate names if they're in the cache
+    # don't evaluate sites when they're in the cache
     if in_cache(name): return
 
     # ignore reverse DNS 
@@ -175,7 +175,6 @@ def select_DNS(pkt):
     # only validate the 'ultimate' DNS result i.e. not aliases
     if not valid_ip(answer): return
 
-    # only grade new requests and ignore reverse DNS
     print('[+] Requested "{}" DNS responded "{}"'.format(name, answer))
     print ('[+] Evaluating ' + name)
     grade_https(name, answer)
