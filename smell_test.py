@@ -15,6 +15,8 @@ import platform
 import time
 import json
 import glob
+import yaml
+import logging.config
 from functools import lru_cache
 from multiprocessing import Pool
 
@@ -29,6 +31,24 @@ from scapy.all import *
 import xdg.BaseDirectory
 import click
 
+import os
+
+def setup_logging(
+    default_path='logging.yaml',
+    default_level=logging.INFO,
+    env_key='LOG_CFG'
+):
+    """Setup logging configuration"""
+    path = default_path
+    value = os.getenv(env_key, None)
+    if value:
+        path = value
+    if os.path.exists(path):
+        with open(path, 'rt') as f:
+            config = yaml.safe_load(f.read())
+        logging.config.dictConfig(config)
+    else:
+        logging.basicConfig(level=default_level)
 
 # Max size value chosen here is arbitrary. Change it if you want.
 @lru_cache(maxsize=100)
@@ -38,8 +58,8 @@ def in_cache(cname):
     """
     path_to_cache = cache_path()
     reports = glob(path_to_cache + '*.json')
-    for report in reports:
-        if cname in report:
+    for filename in reports:
+        if cname in filename:
             return True
     return False
 
@@ -71,7 +91,7 @@ def cache_path():
                 os.makedirs(path)
             except IOError as e:
                 if e.errno == errno.EACCES:
-                    print("Cannot create {} due to insufficient permissions.".format(path))
+                    logging.warning("Cannot create {} due to insufficient permissions.".format(path))
                     return None
                 # Not a permission error.
                 raise
@@ -91,8 +111,10 @@ def generate_report(name, ip_addr, timeout, severity):
     # change this value if you move testssl for whatever reason
     path_to_executable = './testssl.sh/testssl.sh'
 
-    # make sure we have no troubles writing to files
+
     log_dir = cache_path()
+    if log_dir is None:
+        logging.error("Function cache_path returned None. Check that permissions are correct and that this OS is supported")
     log_path = log_dir + name + '_' + time.strftime("%Y%m%d-%H%M%S") + '.json'
 
     # subprocess expects a flat array; flags with arguments
@@ -119,14 +141,13 @@ def generate_report(name, ip_addr, timeout, severity):
     catch and display errors from testssl
     """
     try:
+        logging.debug("Executing " + ' '.join(args))
         output = subprocess.check_output(args)
         return log_path
     except subprocess.CalledProcessError as e:
         output = e.output
-        print("[-] ERROR: TestSSL did not execute successfully: " + output)
+        logging.error("testssl.sh returned an error: " + output)
         return None
-
-    print(output)
 
 # TODO: Create more granular grading criteria
 def grade_https(name, ip_addr, timeout, severity):
@@ -135,9 +156,13 @@ def grade_https(name, ip_addr, timeout, severity):
     will be decided later.
     """
     # Generate report and get its path.
-    print('[+] Evaluating {} ({})'.format(name, ip_addr))
+    logging.info('Evaluating {} ({})'.format(name, ip_addr))
     report_path = generate_report(name, ip_addr, timeout, severity)
-    if report_path is None: return
+    if report_path is None:
+        logging.error("Unable to create JSON report for {} ({}))".format(name, ip))
+        return
+
+    logging.info('Report generated for {} at {}'.format(name, report_path))
 
     # Parse json report file for grade info.
     summary = {}
@@ -150,14 +175,13 @@ def grade_https(name, ip_addr, timeout, severity):
             summary[vuln['severity']] = 1
 
     """If the summary contains anything (and therefore evaluates to True), a vulnerability of at
-    least severity `severity` has been found.  Anything else will have been ignored by testssl and 
+    least severity `severity` has been found.  Anything else will have been ignored by testssl and
     not written into the JSON.
     """
     if summary:
-        print("[!] {} is vulnerable. testssl found:".format(name))
-        for key in summary:
-            print("\t{} vulnerabilities of {} severity".format(summary[key], key))
-        print("\tCheck {} for further details".format(report_path))
+        logging.info("{} is VULNERABLE: {}. See {}".format(name, summary, report_path))
+    else:
+        logging.info("{} does not have any {} severity vulnerabilties or higher.".format(name, severity))
 
 def custom_action(timeout, severity):
     """Acts as a wrapper around `select_dns`.  This is the only way to pass arguments to custom
@@ -181,18 +205,22 @@ def custom_action(timeout, severity):
 
         # Sometimes DNS responses come with a trailing period. Normalize the name.
         if name.endswith('.'):
+            logging.debug("Trimming the period from " + name)
             name = name[:-1]
 
         # Don't evaluate sites when they're in the cache
         if in_cache(name):
+            logging.debug(name + " is present in the cache; grading skipped.")
             return
 
         # Ignore reverse DNS
         if 'in-addr' in name:
+            logging.debug("Ignoring DNS reverse query: " + name)
             return
 
         # Only validate the 'ultimate' DNS result i.e. not aliases
         if not valid_ip(answer):
+            logging.debug("DNS answered with non-IP address {}. Queries should continue...".format(answer))
             return
 
         pool = Pool(processes=4)
@@ -217,13 +245,14 @@ def smell_test(timeout, severity, interface):
     """Invokes the scapy sniff function and filters for DNS requests.  Matching packets are passed
     to the `select_dns` function for further validating and eventual grading.
     """
+    setup_logging()
+    logging.debug('Program start')
     filter_bpf = 'udp and port 53'
-    print('[**] Beginning "Smell Test"')
     try:
         sniff(iface=interface, filter=filter_bpf, store=0, prn=custom_action(timeout,severity))
     except OSError as e:
         # This works on Linux but OS X segfaults when the interface is wrong lmao
-        print('[-] ERROR: "{}". (Make sure `interface` matches your network interface)'.format(e))
+        logging.error('"{}". (Make sure `interface` matches your network interface)'.format(e))
 
 if __name__ == '__main__':
     smell_test()

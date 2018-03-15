@@ -1,5 +1,6 @@
 scapy-python3
 pyxdg
 click
+pyyaml
 pytest
 pylint
