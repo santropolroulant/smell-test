@@ -1,5 +1,8 @@
 import platform
 import os
+
+import xdg.BaseDirectory
+
 from smell_test import valid_ip
 from smell_test import cache_path
 
@@ -10,7 +13,7 @@ def test_valid_ip():
 def test_cache_path():
     this_os = platform.system()
     if this_os == 'Linux':
-        assert cache_path() == '~/.cache/smell-test/'
+        assert cache_path() == xdg.BaseDirectory.save_cache_path('smell-test/')
     elif this_os == 'Darwin':
         home = os.path.expanduser('~')
         path = home + '/Library/Application Support/smell-test/'
