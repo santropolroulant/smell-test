@@ -1,4 +1,5 @@
 scapy-python3
 pyxdg
-pytest
 click
+pytest
+pylint
