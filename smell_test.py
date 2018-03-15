@@ -11,7 +11,6 @@ from sys import exit
 from functools import lru_cache
 from multiprocessing import Pool
 
-
 # TODO: the below doensn't actually work on Debian. Needs fixing
 # look for the Debian package name
 try:
@@ -21,6 +20,7 @@ except ImportError:
 #TODO only import what we need: `sniff` (what else?)
 from scapy.all import *
 import xdg.BaseDirectory
+import click
 
 # Change this to whatever interface you are interested in
 # TODO: Change this to a command line argument to the script
@@ -196,9 +196,16 @@ def select_DNS(pkt):
     #    print("[-] The grading process exceeded the time limit")
     #grade_https(name, answer)
 
-print ('[**] Beginning "Smell Test"')
-try:
-    sniff(iface=interface, filter=filter_bpf, store=0,  prn=select_DNS)
-except OSError as e:
-    # note: this works on Linux but OS X segfaults when the interface is wrong lmao
-    print('[-] ERROR: "{}". (Make sure `interface` matches your network interface)'.format(e))
+@click.command()
+def smell_test():
+    print ('[**] Beginning "Smell Test"')
+    try:
+        sniff(iface=interface, filter=filter_bpf, store=0,  prn=select_DNS)
+    except OSError as e:
+        # note: this works on Linux but OS X segfaults when the interface is wrong lmao
+        print('[-] ERROR: "{}". (Make sure `interface` matches your network interface)'.format(e))
+
+if __name__ == '__main__':
+    smell_test()
+
+
