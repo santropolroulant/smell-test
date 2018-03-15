@@ -9,6 +9,7 @@ import json
 import glob
 from sys import exit
 from functools import lru_cache
+from multiprocessing import Pool
 
 
 # TODO: the below doensn't actually work on Debian. Needs fixing
@@ -141,21 +142,29 @@ def grade_https(name, ip):
     vulnerabilties ranking HIGH|CRITICAL a "Fail" and others a "Pass"
     """
     # generate report and get the path
+    print ('[+] Evaluating ' + name)
     report_path = generate_report(name, ip)
     if report_path is None: return  
-    print("[+] Report generated: " + report_path)
 
-    # parse json file for grade info
+    # parse json report file for grade info
+    summary = {}
     with open(report_path, 'r') as fh:
         data = json.load(fh)
     for vuln in data['scanResult'][0]['vulnerabilities']:
-        out_string = '[!] {}-severity vulnerability found: {}'.format(vuln['severity'], vuln['id'])
-        # some vulnerabilities don't have cves
-        if 'cve' in vuln:
-            out_string += ' ({})'.format(vuln['cve'])
+        if vuln['severity'] in summary:
+            summary[vuln['severity']] += 1
+        else:
+            summary[vuln['severity']] = 1
 
-        print(out_string)
-    #print(json.dumps(data, indent=4, sort_keys=True))
+    # If the summary contains anything (and therefore evaluates to True),
+    # a vulnerability of at least severity `severity` has been found.
+    # Anything else will have been ignored by testssl and not written into the JSON
+    # (For now this value is hard-coded as 'HIGH')
+    if summary:
+        print("[!] {} is vulnerable. testssl found:".format(name))
+        for key in summary:
+            print("\t{} vulnerabilities of {} severity".format(summary[key], key))
+        print("\tCheck {} for further details".format(report_path))
 
 # this function gets called on all packets that match the sniffer filter
 def select_DNS(pkt):
@@ -178,9 +187,14 @@ def select_DNS(pkt):
     # only validate the 'ultimate' DNS result i.e. not aliases
     if not valid_ip(answer): return
 
-    print('[+] Requested "{}" DNS responded "{}"'.format(name, answer))
-    print ('[+] Evaluating ' + name)
-    grade_https(name, answer)
+    timeout = 60  # Change this to a command line or config option
+    pool = Pool(processes=4)
+    result = pool.apply_async(grade_https, [name, answer])
+    #try:
+    #    print(result.get(timeout=60))
+    #except TimeoutError:
+    #    print("[-] The grading process exceeded the time limit")
+    #grade_https(name, answer)
 
 print ('[**] Beginning "Smell Test"')
 try:
