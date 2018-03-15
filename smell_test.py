@@ -44,8 +44,8 @@ def setup_logging(
     if value:
         path = value
     if os.path.exists(path):
-        with open(path, 'rt') as f:
-            config = yaml.safe_load(f.read())
+        with open(path, 'rt') as yaml_config_file:
+            config = yaml.safe_load(yaml_config_file.read())
         logging.config.dictConfig(config)
     else:
         logging.basicConfig(level=default_level)
