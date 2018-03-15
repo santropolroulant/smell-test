@@ -136,7 +136,7 @@ def grade_https(name, ip):
     vulnerabilties ranking HIGH|CRITICAL a "Fail" and others a "Pass"
     """
     # generate report and get the path
-    print ('[+] Evaluating ' + name)
+    print ('[+] Evaluating {} ({})'.format(name, ip))
     report_path = generate_report(name, ip)
     if report_path is None: return  
 
@@ -181,7 +181,6 @@ def select_DNS(pkt):
     # only validate the 'ultimate' DNS result i.e. not aliases
     if not valid_ip(answer): return
 
-    timeout = 60  # Change this to a command line or config option
     pool = Pool(processes=4)
     result = pool.apply_async(grade_https, [name, answer])
     #try:
