@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Smell Test is a script designed to monitor the DNS traffic on a specificied interface and grade
 the TLS of the requested domains.  The relative health of each domain is recorded in JSON files
 and the user will be warned when a domain is seriously vulnerable to a known attack.  The primary
@@ -6,7 +7,6 @@ notifying domain admins with offending configurations.  In this way, sysadmins c
 notify one another when something is misconfigured.
 """
 
-#!/usr/bin/env python3
 
 import subprocess
 import socket
