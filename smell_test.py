@@ -11,7 +11,6 @@ from sys import exit
 from functools import lru_cache
 from multiprocessing import Pool
 
-
 # TODO: the below doensn't actually work on Debian. Needs fixing
 # look for the Debian package name
 try:
@@ -21,10 +20,12 @@ except ImportError:
 #TODO only import what we need: `sniff` (what else?)
 from scapy.all import *
 import xdg.BaseDirectory
+import click
 
 # Change this to whatever interface you are interested in
-# TODO: Change this to a command line argument to the script
-interface = ''
+interface_to_sniff = ''
+timeout_in_seconds = 60
+severity = 'HIGH'
 filter_bpf = 'udp and port 53'
 
 # Max size value chosen here is arbitrary. Change it if you want.
@@ -94,13 +95,6 @@ def generate_report(name, ip_addr):
     log_dir = cache_path()
     log_path = log_dir + name + '_' + time.strftime("%Y%m%d-%H%M%S") + '.json'
 
-    # adjust this according to your level of paranoia
-    # good values are HIGH and CRITICAL
-    severity = 'HIGH' 
-
-    # This must be a string because it's a command line argument
-    timeout_in_seconds = '20'
-
     # subprocess expects a flat array; flags with arguments 
     #       must be separated into their own elements
     flags = [
@@ -108,7 +102,7 @@ def generate_report(name, ip_addr):
             '--warnings', # testssl.sh will still warn you if there will be a "drastic impact"
             'off',
             '--openssl-timeout', # TODO: instead of timeout, don't run this on HTTP w/out TLS
-            timeout_in_seconds,
+            str(timeout_in_seconds),   # Must be a string because it's a command-line argument
             '--severity',
             severity,
             '--quiet', # leave fewer traces
@@ -142,7 +136,7 @@ def grade_https(name, ip):
     vulnerabilties ranking HIGH|CRITICAL a "Fail" and others a "Pass"
     """
     # generate report and get the path
-    print ('[+] Evaluating ' + name)
+    print ('[+] Evaluating {} ({})'.format(name, ip))
     report_path = generate_report(name, ip)
     if report_path is None: return  
 
@@ -187,7 +181,6 @@ def select_DNS(pkt):
     # only validate the 'ultimate' DNS result i.e. not aliases
     if not valid_ip(answer): return
 
-    timeout = 60  # Change this to a command line or config option
     pool = Pool(processes=4)
     result = pool.apply_async(grade_https, [name, answer])
     #try:
@@ -196,9 +189,30 @@ def select_DNS(pkt):
     #    print("[-] The grading process exceeded the time limit")
     #grade_https(name, answer)
 
-print ('[**] Beginning "Smell Test"')
-try:
-    sniff(iface=interface, filter=filter_bpf, store=0,  prn=select_DNS)
-except OSError as e:
-    # note: this works on Linux but OS X segfaults when the interface is wrong lmao
-    print('[-] ERROR: "{}". (Make sure `interface` matches your network interface)'.format(e))
+@click.command()
+@click.option(
+        '--timeout', 
+        default = 60, 
+        help = "Time (seconds) to wait before giving up on connecting. Default is 60s."
+)
+# TODO: add validation on the input of severity levels
+@click.option(
+    '--severity', 
+    default = 'HIGH', 
+    help = "Only add findings to the output file if a severity is equal or higher than the severity value specified. Allowed are <LOW|MEDIUM|HIGH|CRITICAL>."
+)
+@click.argument('interface')
+#@click.options('--interface', help='The network interface to sniff')
+def smell_test(timeout, severity, interface):
+    interface_to_sniff = interface
+    print ('[**] Beginning "Smell Test"')
+    try:
+        sniff(iface=interface_to_sniff, filter=filter_bpf, store=0,  prn=select_DNS)
+    except OSError as e:
+        # note: this works on Linux but OS X segfaults when the interface is wrong lmao
+        print('[-] ERROR: "{}". (Make sure `interface` matches your network interface)'.format(e))
+
+if __name__ == '__main__':
+    smell_test()
+
+
