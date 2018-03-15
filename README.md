@@ -1,4 +1,4 @@
-# Smell Test
+# Smell Test [![Build Status](https://travis-ci.org/johnsaigle/smell-test.svg?branch=master)](https://travis-ci.org/johnsaigle/smell-test)
 
 Basic idea: run this script on a router and sniff DNS requests using scapy3k.
 
