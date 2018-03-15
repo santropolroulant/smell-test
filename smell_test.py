@@ -7,7 +7,6 @@ import platform
 import time
 import json
 import glob
-from sys import exit
 from functools import lru_cache
 from multiprocessing import Pool
 
@@ -22,11 +21,9 @@ from scapy.all import *
 import xdg.BaseDirectory
 import click
 
-# Change this to whatever interface you are interested in
-interface_to_sniff = ''
-timeout_in_seconds = 60
-severity = 'HIGH'
-filter_bpf = 'udp and port 53'
+TIMEOUT_IN_SECONDS = 60
+SEVERITY = 'HIGH'
+FILTER_BPF = 'udp and port 53'
 
 # Max size value chosen here is arbitrary. Change it if you want.
 @lru_cache(maxsize=100)
@@ -36,16 +33,14 @@ def in_cache(cname):
     """
     path_to_cache = cache_path()
     reports = glob(path_to_cache + '*.json')
-    for r in reports:
-        if cname in r:
+    for report in reports:
+        if cname in report:
             return True
     return False
 
 def valid_ip(address):
-    """Validate whether `address` is in valid IPv4 by calling the C class
-    and checking its return value
-    """
-    try: 
+    """Validate whether `address` is valid IPv4"""
+    try:
         socket.inet_aton(address)
         return True
     except:
@@ -66,7 +61,7 @@ def cache_path():
         # resolve user's home directory
         home = os.path.expanduser('~')
         path = home + '/Library/Application Support/smell-test/'
-        if not os.path.exists(path): 
+        if not os.path.exists(path):
             try:
                 os.makedirs(path)
             except IOError as e:
@@ -95,28 +90,29 @@ def generate_report(name, ip_addr):
     log_dir = cache_path()
     log_path = log_dir + name + '_' + time.strftime("%Y%m%d-%H%M%S") + '.json'
 
-    # subprocess expects a flat array; flags with arguments 
+    # subprocess expects a flat array; flags with arguments
     #       must be separated into their own elements
     flags = [
-            '--vulnerable', # check for vulnerabilties
-            '--warnings', # testssl.sh will still warn you if there will be a "drastic impact"
-            'off',
-            '--openssl-timeout', # TODO: instead of timeout, don't run this on HTTP w/out TLS
-            str(timeout_in_seconds),   # Must be a string because it's a command-line argument
-            '--severity',
-            severity,
-            '--quiet', # leave fewer traces
-            '--sneaky',
-            '--nodns', # we are already doing a DNS lookup in the first place
-            '-oJ', # outputs results to a .json file in log_path
-            log_path
+        '--vulnerable', # check for vulnerabilties
+        '--warnings', # testssl.sh will still warn you if there will be a "drastic impact"
+        'off',
+        '--openssl-timeout', # TODO: instead of timeout, don't run this on HTTP w/out TLS
+        str(timeout_in_seconds),   # Must be a string because it's a command-line argument
+        '--severity',
+        severity,
+        '--quiet', # leave fewer traces
+        '--sneaky',
+        '--nodns', # we are already doing a DNS lookup in the first place
+        '-oJ', # outputs results to a .json file in log_path
+        log_path
     ]
     args.append(path_to_executable)
     for f in flags: args.append(f)
     args.append(ip_addr)
 
-    # Create testssl fork using subprocess and capture the output
-    # The execept statement will catch and display errors from testssl
+    """Create testssl fork using subprocess and capture the output. The execept statement will
+    catch and display errors from testssl
+    """
     try:
         output = subprocess.check_output(args)
         return log_path
@@ -129,31 +125,29 @@ def generate_report(name, ip_addr):
 
 # TODO: Create more granular grading criteria
 def grade_https(name, ip):
-    """Takes as input a website name and its IP and returns a grading.
-    The grade represents a simplified evaluation of SSL/TLS security
-    based on the output of testssl.sh
-    Exact criteria will be decided later. For now we will give sites with
-    vulnerabilties ranking HIGH|CRITICAL a "Fail" and others a "Pass"
+    """Takes as input a website name and its IP and returns a grading.  The grade represents a
+    simplified evaluation of SSL/TLS security based on the output of testssl.sh.  Exact criteria
+    will be decided later.
     """
-    # generate report and get the path
-    print ('[+] Evaluating {} ({})'.format(name, ip))
+    # Generate report and get its path.
+    print('[+] Evaluating {} ({})'.format(name, ip))
     report_path = generate_report(name, ip)
-    if report_path is None: return  
+    if report_path is None: return
 
-    # parse json report file for grade info
+    # Parse json report file for grade info.
     summary = {}
-    with open(report_path, 'r') as fh:
-        data = json.load(fh)
+    with open(report_path, 'r') as file_handle:
+        data = json.load(file_handle)
     for vuln in data['scanResult'][0]['vulnerabilities']:
         if vuln['severity'] in summary:
             summary[vuln['severity']] += 1
         else:
             summary[vuln['severity']] = 1
 
-    # If the summary contains anything (and therefore evaluates to True),
-    # a vulnerability of at least severity `severity` has been found.
-    # Anything else will have been ignored by testssl and not written into the JSON
-    # (For now this value is hard-coded as 'HIGH')
+    """If the summary contains anything (and therefore evaluates to True), a vulnerability of at
+    least severity `severity` has been found.  Anything else will have been ignored by testssl and 
+    not written into the JSON.
+    """
     if summary:
         print("[!] {} is vulnerable. testssl found:".format(name))
         for key in summary:
@@ -161,58 +155,62 @@ def grade_https(name, ip):
         print("\tCheck {} for further details".format(report_path))
 
 # this function gets called on all packets that match the sniffer filter
-def select_DNS(pkt):
-    # we're only interested in DNS response records
-    if not (DNSRR in pkt and pkt.sport == 53): return
+def select_dns(pkt):
+    """This is called on every packet sniffed by scapy.  After filtering for valid DNS packets,
+    this function extracts the name and IP addr of the DNS requests and passes them along to
+    the `grade_https` function.  The multiprocessing library is used for threading so that the
+    program doesn't hang during grading individual sites.
+    """
+    # We're only interested in DNS response records
+    if not (DNSRR in pkt and pkt.sport == 53):
+        return
 
-    # assume DNS records will give us ASCII results. look into this later
-    name = pkt[DNSQR].qname.decode("ascii").lower() # user asked for this
-    answer = pkt[DNSRR].rdata # corresponding response
+    # Assume DNS records will give us ASCII results. Look into this later.
+    name = pkt[DNSQR].qname.decode("ascii").lower() # The system requested this CNAME.
+    answer = pkt[DNSRR].rdata # Corresponding IPv4 address or alias for the queried name.
 
-    # sometimes DNS responses come with a trailing period. normalize the name.
-    if name.endswith('.'): name = name[:-1]
-    
-    # don't evaluate sites when they're in the cache
-    if in_cache(name): return
+    # Sometimes DNS responses come with a trailing period. Normalize the name.
+    if name.endswith('.'):
+        name = name[:-1]
 
-    # ignore reverse DNS 
-    if 'in-addr' in name: return
+    # Don't evaluate sites when they're in the cache
+    if in_cache(name):
+        return
 
-    # only validate the 'ultimate' DNS result i.e. not aliases
-    if not valid_ip(answer): return
+    # Ignore reverse DNS
+    if 'in-addr' in name:
+        return
+
+    # Only validate the 'ultimate' DNS result i.e. not aliases
+    if not valid_ip(answer):
+        return
 
     pool = Pool(processes=4)
-    result = pool.apply_async(grade_https, [name, answer])
-    #try:
-    #    print(result.get(timeout=60))
-    #except TimeoutError:
-    #    print("[-] The grading process exceeded the time limit")
-    #grade_https(name, answer)
+    pool.apply_async(grade_https, [name, answer])
 
 @click.command()
 @click.option(
-        '--timeout', 
-        default = 60, 
-        help = "Time (seconds) to wait before giving up on connecting. Default is 60s."
+    '--timeout',
+    default=60,
+    help="Time (seconds) to wait before giving up on connecting. Default is 60s."
 )
 # TODO: add validation on the input of severity levels
 @click.option(
-    '--severity', 
-    default = 'HIGH', 
-    help = "Only add findings to the output file if a severity is equal or higher than the severity value specified. Allowed are <LOW|MEDIUM|HIGH|CRITICAL>."
+    '--severity',
+    default='HIGH',
+    help="Vulnerabilites levels to include in grading. Allowed are <LOW|MEDIUM|HIGH|CRITICAL>."
 )
 @click.argument('interface')
 #@click.options('--interface', help='The network interface to sniff')
 def smell_test(timeout, severity, interface):
-    interface_to_sniff = interface
-    print ('[**] Beginning "Smell Test"')
+    TIMEOUT_IN_SECONDS = timeout
+    SEVERITY = severity
+    print('[**] Beginning "Smell Test"')
     try:
-        sniff(iface=interface_to_sniff, filter=filter_bpf, store=0,  prn=select_DNS)
+        sniff(iface=interface, filter=FILTER_BPF, store=0, prn=select_dns)
     except OSError as e:
-        # note: this works on Linux but OS X segfaults when the interface is wrong lmao
+        # This works on Linux but OS X segfaults when the interface is wrong lmao
         print('[-] ERROR: "{}". (Make sure `interface` matches your network interface)'.format(e))
 
 if __name__ == '__main__':
     smell_test()
-
-
